@@ -7,8 +7,19 @@ merges them with ffmpeg (or converts to MP3), and then serves the file.
 yt-dlp needs a JavaScript runtime (Deno) plus the yt-dlp-ejs package to get
 YouTube formats; both are in requirements.txt.
 
+Avoiding "Sign in to confirm you're not a bot" (see README for details):
+  1. PO tokens   - the bgutil-ytdlp-pot-provider plugin (installed from requirements.txt)
+                   asks a small provider server (docker-compose.yml runs one) for
+                   Proof-of-Origin tokens, as recommended by the yt-dlp wiki.
+  2. Cookies     - from a throwaway account; needed when the server's IP itself is flagged.
+  3. Proxy       - route YouTube traffic through a residential / non-datacenter IP.
+  4. Fallbacks   - on a bot check / 403 the request is retried with other YouTube clients.
+
 Settings (environment variables):
   YT_COOKIES_FILE           cookies for YouTube (default: same file as IG_COOKIES_FILE)
+  YT_POT_PROVIDER_URL       bgutil PO token server (default http://127.0.0.1:4416)
+  YT_PROXY                  proxy for YouTube, e.g. socks5://127.0.0.1:1080 or http://user:pass@host:port
+  YT_PLAYER_CLIENTS         comma-separated yt-dlp player clients (default: yt-dlp's defaults + mweb)
   YT_MAX_DURATION_MINUTES   refuse longer videos (default 180, 0 = no limit)
 """
 
@@ -23,6 +34,15 @@ from .extractor import COOKIES_FILE, ExtractionError, MediaItem, MediaResult
 
 YT_COOKIES_FILE = os.environ.get("YT_COOKIES_FILE", COOKIES_FILE)
 MAX_DURATION = int(os.environ.get("YT_MAX_DURATION_MINUTES", "180")) * 60
+POT_PROVIDER_URL = os.environ.get("YT_POT_PROVIDER_URL", "http://127.0.0.1:4416").rstrip("/")
+PROXY = os.environ.get("YT_PROXY", "").strip()
+# The yt-dlp PO Token Guide recommends the mweb client together with a PO token provider.
+PLAYER_CLIENTS = [c.strip() for c in os.environ.get("YT_PLAYER_CLIENTS", "default,mweb").split(",") if c.strip()]
+# Tried in order when YouTube answers with a bot check / 403. These clients use different
+# YouTube APIs; android_vr and web_embedded don't need PO tokens at all.
+FALLBACK_CLIENTS = [["tv", "web_safari", "mweb"], ["android_vr", "web_embedded"]]
+RETRYABLE = ("not a bot", "sign in to confirm", "http error 403", "forbidden", "po token",
+             "requested format is not available", "only images are available")
 
 YT_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com",
             "youtu.be", "www.youtube-nocookie.com", "youtube-nocookie.com"}
@@ -64,18 +84,74 @@ def watch_url(raw: str) -> str:
     return f"https://www.youtube.com/watch?v={video_id(raw)}"
 
 
-def _base_opts() -> dict:
-    opts = {"quiet": True, "no_warnings": True, "noplaylist": True, "noprogress": True}
+def _base_opts(clients: list[str] | None = None) -> dict:
+    opts = {
+        "quiet": True, "no_warnings": True, "noplaylist": True, "noprogress": True,
+        "extractor_args": {
+            "youtube": {"player_client": clients or PLAYER_CLIENTS},
+            "youtubepot-bgutilhttp": {"base_url": [POT_PROVIDER_URL]},
+        },
+        # a short pause between API requests helps stay under YouTube's rate limits
+        "sleep_interval_requests": 1,
+    }
     if os.path.isfile(YT_COOKIES_FILE):
         opts["cookiefile"] = YT_COOKIES_FILE
+    if PROXY:
+        opts["proxy"] = PROXY
     return opts
+
+
+def _with_fallbacks(fn):
+    """Run fn(clients); on a bot check / 403, retry with other YouTube clients."""
+    attempts = [None, *FALLBACK_CLIENTS]
+    for i, clients in enumerate(attempts):
+        try:
+            return fn(clients)
+        except Exception as exc:
+            if i == len(attempts) - 1 or not any(s in str(exc).lower() for s in RETRYABLE):
+                raise
+
+
+def pot_plugin_installed() -> bool:
+    import importlib.util
+
+    return importlib.util.find_spec("yt_dlp_plugins.extractor.getpot_bgutil_http") is not None
+
+
+def pot_provider_status() -> dict:
+    """Is the PO token provider server reachable? (it answers GET /ping with its version)"""
+    import httpx
+
+    try:
+        r = httpx.get(f"{POT_PROVIDER_URL}/ping", timeout=2, trust_env=False)
+        r.raise_for_status()
+        return {"reachable": True, "version": r.json().get("version")}
+    except Exception:
+        return {"reachable": False, "version": None}
+
+
+def bot_protection_status() -> dict:
+    return {
+        "pot_plugin": pot_plugin_installed(),
+        "pot_provider": {"url": POT_PROVIDER_URL, **pot_provider_status()},
+        "cookies": os.path.isfile(YT_COOKIES_FILE),
+        "proxy": bool(PROXY),
+    }
 
 
 def _friendly(exc: Exception) -> str:
     msg = re.sub(r"^ERROR:\s*(\[[^\]]+\]\s*[\w-]+:\s*)?", "", str(exc)).strip()
     low = msg.lower()
     if "sign in to confirm" in low or "not a bot" in low:
-        return "YouTube is asking this server to sign in (bot check). Add YouTube cookies (see README)."
+        missing = []
+        if not pot_provider_status()["reachable"]:
+            missing.append("start the PO token server")
+        if not os.path.isfile(YT_COOKIES_FILE):
+            missing.append("add YouTube cookies")
+        if not PROXY:
+            missing.append("use a residential proxy")
+        hint = ("Try: " + ", ".join(missing) + ".") if missing else "This server's IP is flagged; try a different proxy."
+        return f"YouTube blocked this server with a bot check. {hint} See README → YouTube bot check."
     if "age" in low and ("restrict" in low or "confirm your age" in low):
         return "This video is age-restricted. Add cookies from a signed-in YouTube account (see README)."
     if "private video" in low:
@@ -93,15 +169,21 @@ def _friendly(exc: Exception) -> str:
 def _extract_info(url: str) -> dict:
     import yt_dlp
 
-    with yt_dlp.YoutubeDL(_base_opts()) as ydl:
-        return ydl.sanitize_info(ydl.extract_info(url, download=False))
+    def attempt(clients):
+        with yt_dlp.YoutubeDL(_base_opts(clients)) as ydl:
+            return ydl.sanitize_info(ydl.extract_info(url, download=False))
+
+    return _with_fallbacks(attempt)
 
 
 def _run_download(url: str, opts: dict) -> None:
     import yt_dlp
 
-    with yt_dlp.YoutubeDL({**_base_opts(), **opts}) as ydl:
-        ydl.download([url])
+    def attempt(clients):
+        with yt_dlp.YoutubeDL({**_base_opts(clients), **opts}) as ydl:
+            ydl.download([url])
+
+    _with_fallbacks(attempt)
 
 
 def resolve(raw: str) -> MediaResult:

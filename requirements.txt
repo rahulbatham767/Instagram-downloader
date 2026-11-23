@@ -5,3 +5,4 @@ yt-dlp[default]>=2025.11.0
 deno>=2.0
 instaloader>=4.13
 packaging>=23
+bgutil-ytdlp-pot-provider>=2.0

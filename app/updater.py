@@ -27,7 +27,7 @@ from packaging.version import InvalidVersion, Version
 
 log = logging.getLogger("uvicorn.error")  # shows up in the server log
 
-PACKAGES = ("yt-dlp", "instaloader")
+PACKAGES = ("yt-dlp", "instaloader", "bgutil-ytdlp-pot-provider")
 # extras to keep installed alongside a package (yt-dlp[default] pulls in yt-dlp-ejs for YouTube)
 INSTALL_SPEC = {"yt-dlp": "yt-dlp[default]"}
 ENABLED = os.environ.get("AUTO_UPDATE", "1") != "0"

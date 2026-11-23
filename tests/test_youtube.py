@@ -157,3 +157,51 @@ def test_updater_installs_ytdlp_with_extras(monkeypatch):
     monkeypatch.setattr(updater.subprocess, "run", lambda cmd, **kw: calls.append(cmd))
     updater.install({"yt-dlp": ("1", "2"), "instaloader": ("1", "2")})
     assert "yt-dlp[default]==2" in calls[0] and "instaloader==2" in calls[0]
+
+
+def test_base_opts_include_pot_provider_and_proxy(monkeypatch):
+    monkeypatch.setattr(youtube, "PROXY", "socks5://127.0.0.1:1080")
+    opts = youtube._base_opts()
+    assert opts["extractor_args"]["youtubepot-bgutilhttp"]["base_url"] == [youtube.POT_PROVIDER_URL]
+    assert opts["extractor_args"]["youtube"]["player_client"] == ["default", "mweb"]
+    assert opts["proxy"] == "socks5://127.0.0.1:1080"
+    assert youtube._base_opts(["tv"])["extractor_args"]["youtube"]["player_client"] == ["tv"]
+
+
+def test_bot_check_retries_with_other_clients():
+    tried = []
+
+    def attempt(clients):
+        tried.append(clients)
+        if len(tried) < 3:
+            raise Exception("ERROR: [youtube] x: Sign in to confirm you're not a bot")
+        return "ok"
+
+    assert youtube._with_fallbacks(attempt) == "ok"
+    assert tried == [None, *youtube.FALLBACK_CLIENTS]
+
+
+def test_other_errors_are_not_retried():
+    tried = []
+
+    def attempt(clients):
+        tried.append(clients)
+        raise Exception("ERROR: Private video")
+
+    with pytest.raises(Exception, match="Private"):
+        youtube._with_fallbacks(attempt)
+    assert tried == [None]
+
+
+def test_bot_check_message_lists_missing_protections(monkeypatch):
+    monkeypatch.setattr(youtube, "pot_provider_status", lambda: {"reachable": False, "version": None})
+    monkeypatch.setattr(youtube, "YT_COOKIES_FILE", "/nonexistent")
+    monkeypatch.setattr(youtube, "PROXY", "")
+    msg = youtube._friendly(Exception("Sign in to confirm you're not a bot"))
+    assert "start the PO token server" in msg and "add YouTube cookies" in msg and "residential proxy" in msg
+
+
+def test_pot_plugin_detected_and_status_endpoint():
+    assert youtube.pot_plugin_installed()
+    st = TestClient(main.app).get("/api/status").json()["youtube"]
+    assert st["pot_plugin"] is True and "reachable" in st["pot_provider"]

@@ -34,8 +34,7 @@ Tip: `http://localhost:8000/?url=<instagram link>` fetches the link right away.
 With Docker:
 
 ```bash
-docker build -t instasave .
-docker run -p 8000:8000 -v "$PWD/cookies.txt:/app/cookies.txt:ro" instasave
+docker compose up -d --build   # app + YouTube PO token server; put cookies in ./data/
 ```
 
 ### Command line
@@ -73,18 +72,56 @@ Notes:
 - The repo also has a **Dependabot** config (`.github/dependabot.yml`). Once the repo is on GitHub with Dependabot
   enabled, it opens a pull request whenever a new version of a dependency or the Docker base image is released.
 
-## YouTube "Sign in to confirm you're not a bot"
+## YouTube bot check ("Sign in to confirm you're not a bot")
 
-YouTube often blocks downloads from servers and cloud hosts (it's less common from a home connection).
-If you see this error, or need age-restricted videos, export cookies from a browser signed in to YouTube
-the same way as for Instagram (below). You can put both sites' cookies in the same `cookies.txt`, or
-use a separate file with `YT_COOKIES_FILE=youtube_cookies.txt`.
+YouTube shows this to traffic it thinks is automated, and **cloud/datacenter IPs (VPS, AWS, etc.) get it far
+more often than home connections.** No single trick fixes it every time, so the app layers several defenses.
+They're listed below from most to least important.
+
+**1. PO token provider (set up automatically with Docker).**
+The [yt-dlp PO Token Guide](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide) recommends a PO-token
+provider plugin, and this app uses [bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider)
+(maintained by a yt-dlp maintainer). The plugin is in `requirements.txt` and kept updated by the auto-updater. It needs
+its small token server running:
+
+```bash
+docker compose up -d --build        # app + token server, nothing else to do
+# or, without compose, run just the token server next to `python -m app`:
+docker run -d --name bgutil-provider --init --restart unless-stopped \
+  -p 127.0.0.1:4416:4416 brainicism/bgutil-ytdlp-pot-provider
+```
+
+Keep the `127.0.0.1:` in the port mapping: the token server has no authentication and shouldn't be public.
+`GET /api/status` → `youtube.pot_provider.reachable` tells you if the app can see it.
+
+**2. Cookies from a throwaway account** (needed when your server's IP itself is flagged; a PO token alone doesn't
+get past IP-based blocks). Follow yt-dlp's recommended way so YouTube doesn't rotate them away:
+1. Open a **private/incognito window** and log into YouTube with a **spare** account (never your main one: accounts
+   used for downloading can be temporarily or permanently banned).
+2. In that same tab go to `https://www.youtube.com/robots.txt`.
+3. Export cookies with an extension such as "Get cookies.txt LOCALLY" to `data/cookies.txt` (Docker) or
+   `cookies.txt`, then **close the private window without logging out**.
+
+**3. A residential proxy** if the server's IP is blocked outright. Set `YT_PROXY`
+(e.g. `socks5://user:pass@host:1080`). Home connections rarely need this.
+
+**4. Automatic fallbacks (built in).** On a bot check or HTTP 403 the app retries with other YouTube clients
+(`tv`, `web_safari`, `mweb`, then `android_vr`, `web_embedded`, some of which need no PO token).
+And the auto-updater installs yt-dlp fixes as soon as they're released.
+
+The error message in the app tells you which of these are still missing.
 
 | Variable | Default | Meaning |
 |---|---|---|
+| `YT_POT_PROVIDER_URL` | `http://127.0.0.1:4416` | PO token server (compose sets `http://pot-provider:4416`) |
 | `YT_COOKIES_FILE` | same as `IG_COOKIES_FILE` | cookies used for YouTube |
+| `YT_PROXY` | none | proxy for YouTube requests |
+| `YT_PLAYER_CLIENTS` | `default,mweb` | yt-dlp player clients to use first |
 | `YT_MAX_DURATION_MINUTES` | `180` | refuse longer videos (`0` = no limit) |
 | `MAX_CONCURRENT_JOBS` | `2` | YouTube downloads processed at the same time (others wait in a queue) |
+
+Rate limits: YouTube allows about 300 videos/hour without an account and about 2000/hour with one. Beyond that you'll
+see "This content isn't available, try again later".
 
 Finished YouTube files are kept on the server for 30 minutes and then deleted.
 

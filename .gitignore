@@ -6,3 +6,4 @@ cookies.txt
 *.session
 downloads/
 .pytest_cache/
+data/

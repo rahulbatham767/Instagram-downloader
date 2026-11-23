@@ -122,6 +122,7 @@ def status():
         "logged_in": extractor.has_session(),
         "ffmpeg": shutil.which("ffmpeg") is not None,
         "js_runtime": shutil.which("deno") is not None,  # needed by yt-dlp for YouTube
+        "youtube": youtube.bot_protection_status(),
         "updater": updater.status(),
     }
 

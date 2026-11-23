@@ -9,6 +9,9 @@ fetch("/api/status").then((r) => r.json()).then((s) => {
   if (!s.logged_in) notes.push("Instagram stories and private posts need login cookies — see README to enable them.");
   if (!s.ffmpeg) notes.push("ffmpeg is not installed, so MP3 audio and YouTube downloads are disabled.");
   if (!s.js_runtime) notes.push("Deno is not installed, so YouTube downloads may fail — run pip install -r requirements.txt.");
+  const yt = s.youtube || {};
+  if (yt.pot_provider && !yt.pot_provider.reachable && !yt.cookies)
+    notes.push("YouTube bot protection isn't set up (no PO token server or cookies), so YouTube may ask to \"confirm you're not a bot\" — see README.");
   if (notes.length) { $("notice").textContent = notes.join(" "); show($("notice"), true); }
 }).catch(() => {});
 
