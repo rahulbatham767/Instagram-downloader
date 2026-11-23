@@ -3,25 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>InstaSave — Instagram Downloader</title>
+  <title>InstaSave — Instagram &amp; YouTube Downloader</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <main class="wrap">
     <header>
       <h1>Insta<span>Save</span></h1>
-      <p class="sub">Download Instagram reels, videos, photos, stories and audio — just paste a link.</p>
+      <p class="sub">Download Instagram reels, photos &amp; stories and YouTube videos &amp; MP3 — just paste a link.</p>
     </header>
 
     <form id="form" class="search" autocomplete="off">
       <input id="url" type="url" inputmode="url" required
-             placeholder="https://www.instagram.com/reel/…" aria-label="Instagram link">
+             placeholder="Paste an Instagram or YouTube link…" aria-label="Instagram or YouTube link">
       <button type="button" id="paste" class="ghost" title="Paste from clipboard">Paste</button>
       <button type="submit" id="go">Download</button>
     </form>
 
     <ul class="types">
-      <li>🎬 Reels &amp; Videos</li><li>🖼️ Photos &amp; Carousels</li><li>⏱️ Stories</li><li>🎵 Audio (MP3)</li>
+      <li>🎬 Reels &amp; Videos</li><li>🖼️ Photos &amp; Carousels</li><li>⏱️ Stories</li><li>▶️ YouTube up to 4K</li><li>🎵 MP3 Audio</li>
     </ul>
 
     <p id="notice" class="notice" hidden></p>
@@ -39,7 +39,7 @@
       <div id="grid" class="grid"></div>
     </section>
 
-    <footer>For personal use only. Respect creators' rights and Instagram's terms.</footer>
+    <footer>For personal use only. Respect creators' rights and the platforms' terms.</footer>
   </main>
   <script src="/app.js"></script>
 </body>

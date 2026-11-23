@@ -6,8 +6,9 @@ function setError(msg) { $("error").textContent = msg || ""; show($("error"), !!
 
 fetch("/api/status").then((r) => r.json()).then((s) => {
   const notes = [];
-  if (!s.logged_in) notes.push("Stories and private posts need login cookies — see README to enable them.");
-  if (!s.ffmpeg) notes.push("ffmpeg is not installed, so MP3 audio extraction is disabled.");
+  if (!s.logged_in) notes.push("Instagram stories and private posts need login cookies — see README to enable them.");
+  if (!s.ffmpeg) notes.push("ffmpeg is not installed, so MP3 audio and YouTube downloads are disabled.");
+  if (!s.js_runtime) notes.push("Deno is not installed, so YouTube downloads may fail — run pip install -r requirements.txt.");
   if (notes.length) { $("notice").textContent = notes.join(" "); show($("notice"), true); }
 }).catch(() => {});
 
@@ -27,7 +28,81 @@ function button(href, label, ghost) {
   return a;
 }
 
+function fmtDuration(sec) {
+  if (!sec) return "";
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0");
+}
+
+function el(tag, props = {}, ...children) {
+  const e = Object.assign(document.createElement(tag), props);
+  e.append(...children);
+  return e;
+}
+
+function renderYouTube(data) {
+  $("owner").textContent = data.title || "YouTube video";
+  $("caption").textContent = data.owner || "";
+  show($("all"), false);
+  const item = data.items[0];
+
+  const thumb = el("div", { className: "thumb" }, el("img", { src: item.thumbnail, alt: "Video thumbnail" }));
+  if (data.duration) thumb.append(el("span", { className: "dur", textContent: fmtDuration(data.duration) }));
+
+  const select = el("select", { id: "quality" },
+    el("option", { value: "", textContent: "Best available" }),
+    ...data.qualities.map((q) => el("option", { value: q, textContent: q + "p" + (q >= 2160 ? " (4K)" : q >= 1440 ? " (2K)" : q >= 720 ? " HD" : "") })));
+  const videoBtn = el("button", { type: "button", textContent: "⬇ Video MP4" });
+  const audioBtn = el("button", { type: "button", className: "ghost", textContent: "🎵 Audio MP3" });
+  const bar = el("div", { className: "bar" }, el("span"));
+  const stage = el("span");
+  const prog = el("div", { className: "progress", hidden: true }, stage, bar);
+
+  async function start(mode) {
+    videoBtn.disabled = audioBtn.disabled = true;
+    setError(""); prog.hidden = false; stage.textContent = "Starting…"; bar.classList.add("indeterminate");
+    try {
+      const res = await fetch("/api/jobs", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: data.token, index: 0, mode,
+                               quality: mode === "video" && select.value ? Number(select.value) : null }),
+      });
+      let job = await res.json();
+      if (!res.ok) throw new Error(job.detail || "Could not start download");
+      while (job.status === "queued" || job.status === "running") {
+        await new Promise((r) => setTimeout(r, 1000));
+        const r = await fetch("/api/jobs/" + job.id);
+        job = await r.json();
+        if (!r.ok) throw new Error(job.detail || "Download failed");
+        const pct = Math.round(job.progress * 100);
+        const downloading = job.stage.startsWith("Downloading") && job.progress > 0 && job.progress < 1;
+        bar.classList.toggle("indeterminate", !downloading);
+        bar.firstChild.style.width = downloading ? pct + "%" : "";
+        stage.textContent = job.stage + (downloading ? ` — ${pct}%` : "…");
+      }
+      if (job.status === "error") throw new Error(job.error);
+      bar.classList.remove("indeterminate"); bar.firstChild.style.width = "100%";
+      stage.textContent = "Done! Your download should start now.";
+      button(job.file_url, "").click();
+    } catch (err) {
+      setError(err.message); prog.hidden = true;
+    } finally {
+      videoBtn.disabled = audioBtn.disabled = false;
+    }
+  }
+  videoBtn.onclick = () => start("video");
+  audioBtn.onclick = () => start("audio");
+
+  const side = el("div", { className: "side" },
+    el("label", {}, "Video quality", select), el("div", { className: "row" }, videoBtn, audioBtn), prog);
+  $("grid").replaceChildren(el("div", { className: "yt" }, thumb, side));
+  $("grid").className = "";
+  show($("result"), true);
+}
+
 function render(data) {
+  if (data.platform === "youtube") return renderYouTube(data);
+  $("grid").className = "grid";
   $("owner").textContent = data.owner ? "@" + data.owner : "Instagram " + data.kind;
   $("caption").textContent = data.caption || "";
   const grid = $("grid");

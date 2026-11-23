@@ -52,8 +52,12 @@ class MediaItem:
 @dataclass
 class MediaResult:
     source_url: str
-    kind: str  # "post" | "reel" | "story" | "highlight"
+    kind: str  # "post" | "reel" | "story" | "highlight" | "video"
+    platform: str = "instagram"  # "instagram" | "youtube"
     owner: Optional[str] = None
+    title: Optional[str] = None
+    duration: Optional[int] = None  # seconds
+    qualities: list[int] = field(default_factory=list)  # available video heights (YouTube)
     caption: Optional[str] = None
     shortcode: Optional[str] = None
     backend: Optional[str] = None
@@ -86,7 +90,7 @@ def parse_link(raw: str) -> ParsedLink:
     parsed = urlparse(raw)
     host = (parsed.hostname or "").lower()
     if host not in ALLOWED_HOSTS:
-        raise ExtractionError("That doesn't look like an Instagram link.")
+        raise ExtractionError("Please paste an Instagram or YouTube link.")
     path = parsed.path or "/"
     clean = f"https://www.instagram.com{path}"
 
@@ -272,6 +276,10 @@ def _friendly(exc: Exception) -> str:
 
 
 def resolve(raw_url: str) -> MediaResult:
+    from . import youtube
+
+    if youtube.is_youtube(raw_url):
+        return youtube.resolve(raw_url)
     link = parse_link(raw_url)
     errors: list[str] = []
     for backend in (_via_instaloader, _via_ytdlp):

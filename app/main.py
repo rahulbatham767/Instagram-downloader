@@ -11,6 +11,7 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
+from typing import Optional
 from urllib.parse import urlparse
 
 import httpx
@@ -21,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
-from . import extractor, updater
+from . import extractor, jobs, updater, youtube
 from .extractor import ExtractionError, MediaItem, MediaResult
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -36,6 +37,7 @@ USER_AGENT = (
 
 @asynccontextmanager
 async def lifespan(_app):
+    updater.register_busy(jobs.running_count)  # don't restart mid-download
     updater.start()
     yield
 
@@ -72,6 +74,13 @@ class ResolveRequest(BaseModel):
     url: str
 
 
+class JobRequest(BaseModel):
+    token: str
+    index: int = 0
+    mode: str = "video"  # "video" | "audio"
+    quality: Optional[int] = None  # video height, e.g. 720; None = best
+
+
 def _put(result: MediaResult) -> str:
     now = time.time()
     for key in [k for k, (ts, _) in _cache.items() if now - ts > CACHE_TTL]:
@@ -98,8 +107,11 @@ def _check_cdn(url: str) -> None:
 
 
 def _filename(result: MediaResult, item: MediaItem, ext: str) -> str:
-    base = "_".join(p for p in (result.owner, result.shortcode or result.kind) if p) or "instagram"
-    base = re.sub(r"[^\w.-]+", "_", base)[:80]
+    if result.platform == "youtube" and result.title:
+        base = re.sub(r"[^\w .()&,'-]+", "", result.title).strip()[:100] or result.shortcode
+    else:
+        base = "_".join(p for p in (result.owner, result.shortcode or result.kind) if p) or "instagram"
+        base = re.sub(r"[^\w.-]+", "_", base)[:80]
     suffix = f"_{item.index + 1}" if len(result.items) > 1 else ""
     return f"{base}{suffix}.{ext}"
 
@@ -109,8 +121,17 @@ def status():
     return {
         "logged_in": extractor.has_session(),
         "ffmpeg": shutil.which("ffmpeg") is not None,
+        "js_runtime": shutil.which("deno") is not None,  # needed by yt-dlp for YouTube
         "updater": updater.status(),
     }
+
+
+def _is_supported(url: str) -> bool:
+    try:
+        youtube.video_id(url) if youtube.is_youtube(url) else extractor.parse_link(url)
+        return True
+    except ExtractionError:
+        return False
 
 
 @app.post("/api/resolve")
@@ -118,27 +139,30 @@ async def resolve(req: ResolveRequest):
     try:
         result = await run_in_threadpool(extractor.resolve, req.url)
     except ExtractionError as exc:
-        try:
-            extractor.parse_link(req.url)
+        if _is_supported(req.url):
             updater.notify_failure()  # valid link but failed: maybe the extractor is outdated
-        except ExtractionError:
-            pass  # the link itself was invalid
         raise HTTPException(422, str(exc)) from exc
     token = _put(result)
     data = result.to_dict()
     data["token"] = token
     for item in data["items"]:
         i = item["index"]
+        item.pop("url", None)
+        if result.platform == "youtube":
+            # YouTube files are built server-side by a background job (POST /api/jobs)
+            item.update(download_url=None, preview_url=item["thumbnail"], audio_url=None)
+            continue
         item["download_url"] = f"/api/download/{token}/{i}"
         item["preview_url"] = f"/api/download/{token}/{i}?inline=1"
         item["audio_url"] = f"/api/audio/{token}/{i}" if item["type"] == "video" else None
-        item.pop("url", None)  # raw CDN url is not needed by the client
     return data
 
 
 @app.get("/api/download/{token}/{index}")
 async def download(token: str, index: int, inline: bool = Query(False)):
     result, item = _get(token, index)
+    if result.platform != "instagram":
+        raise HTTPException(400, "Use /api/jobs to download from this platform.")
     _check_cdn(item.url)
 
     client = httpx.AsyncClient(follow_redirects=True, timeout=60, headers={"User-Agent": USER_AGENT})
@@ -167,6 +191,8 @@ async def download(token: str, index: int, inline: bool = Query(False)):
 @app.get("/api/audio/{token}/{index}")
 async def audio(token: str, index: int):
     result, item = _get(token, index)
+    if result.platform != "instagram":
+        raise HTTPException(400, "Use /api/jobs to download from this platform.")
     if item.type != "video":
         raise HTTPException(400, "Audio can only be extracted from videos.")
     if not shutil.which("ffmpeg"):
@@ -196,6 +222,46 @@ async def audio(token: str, index: int):
         raise HTTPException(502, "Could not extract audio from this video.")
     return FileResponse(out, media_type="audio/mpeg", filename=_filename(result, item, "mp3"),
                         background=BackgroundTask(shutil.rmtree, tmp, ignore_errors=True))
+
+
+@app.post("/api/jobs")
+def create_job(req: JobRequest):
+    result, item = _get(req.token, req.index)
+    if result.platform != "youtube":
+        raise HTTPException(400, "Background jobs are only used for YouTube.")
+    if req.mode not in ("video", "audio"):
+        raise HTTPException(400, "mode must be 'video' or 'audio'.")
+    if not shutil.which("ffmpeg"):
+        raise HTTPException(500, "ffmpeg is not installed on the server.")
+    quality = req.quality if req.mode == "video" else None
+    if quality is not None and quality not in result.qualities:
+        raise HTTPException(400, f"Quality must be one of {result.qualities}.")
+    ext = "mp3" if req.mode == "audio" else "mp4"
+    name = _filename(result, item, ext)
+    if quality:
+        name = name[: -len(ext) - 1] + f" ({quality}p).{ext}"
+    job = jobs.submit(
+        lambda workdir, progress: youtube.download(item.url, req.mode, workdir, quality, progress),
+        filename=name,
+    )
+    return job.public()
+
+
+@app.get("/api/jobs/{job_id}")
+def job_status(job_id: str):
+    job = jobs.get(job_id)
+    if not job:
+        raise HTTPException(404, "Job not found or expired.")
+    return job.public()
+
+
+@app.get("/api/jobs/{job_id}/file")
+def job_file(job_id: str):
+    job = jobs.get(job_id)
+    if not job or job.status != "done" or not job.path or not os.path.exists(job.path):
+        raise HTTPException(404, "File not ready or expired.")
+    media = "audio/mpeg" if job.path.endswith(".mp3") else "video/mp4"
+    return FileResponse(job.path, media_type=media, filename=job.filename)
 
 
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")

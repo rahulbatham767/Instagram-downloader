@@ -1,6 +1,6 @@
 """Keep the extractor libraries up to date automatically.
 
-Instagram changes its site often, and yt-dlp / instaloader ship fixes quickly.
+Instagram and YouTube change often, and yt-dlp / instaloader ship fixes quickly.
 This module checks PyPI for newer releases (at startup, every
 AUTO_UPDATE_INTERVAL_HOURS, and soon after a failed download), installs them
 with pip, then restarts the server process once no requests are in flight so
@@ -28,11 +28,13 @@ from packaging.version import InvalidVersion, Version
 log = logging.getLogger("uvicorn.error")  # shows up in the server log
 
 PACKAGES = ("yt-dlp", "instaloader")
+# extras to keep installed alongside a package (yt-dlp[default] pulls in yt-dlp-ejs for YouTube)
+INSTALL_SPEC = {"yt-dlp": "yt-dlp[default]"}
 ENABLED = os.environ.get("AUTO_UPDATE", "1") != "0"
 INTERVAL = float(os.environ.get("AUTO_UPDATE_INTERVAL_HOURS", "6")) * 3600
 RESTART = os.environ.get("AUTO_UPDATE_RESTART", "1") != "0"
 FAILURE_CHECK_COOLDOWN = 3600  # after a failed download, check at most once an hour
-RESTART_WAIT_LIMIT = 300       # max seconds to wait for in-flight requests before restarting
+RESTART_WAIT_LIMIT = 900       # max seconds to wait for in-flight downloads before restarting
 
 state = {
     "enabled": ENABLED,
@@ -44,6 +46,16 @@ _lock = threading.Lock()
 _wake = threading.Event()
 _active_requests = 0
 _active_lock = threading.Lock()
+_busy_checks: list = []  # callables returning how many background jobs are running
+
+
+def register_busy(check) -> None:
+    if check not in _busy_checks:
+        _busy_checks.append(check)
+
+
+def _busy() -> bool:
+    return _active_requests > 0 or any(check() for check in _busy_checks)
 
 
 # --------------------------------------------------------------------------- #
@@ -97,7 +109,7 @@ def outdated() -> dict[str, tuple[str | None, str]]:
 
 
 def install(pkgs: dict[str, tuple[str | None, str]]) -> None:
-    specs = [f"{p}=={latest}" for p, (_, latest) in pkgs.items()]
+    specs = [f"{INSTALL_SPEC.get(p, p)}=={latest}" for p, (_, latest) in pkgs.items()]
     subprocess.run(
         [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "-q", *specs],
         check=True, timeout=600, capture_output=True,
@@ -144,7 +156,7 @@ def notify_failure() -> None:
 def restart_process() -> None:
     """Replace the current process with a fresh one running the same command."""
     deadline = time.time() + RESTART_WAIT_LIMIT
-    while _active_requests > 0 and time.time() < deadline:
+    while _busy() and time.time() < deadline:
         time.sleep(1)
     log.info("Restarting to load updated packages")
     sys.stdout.flush()
