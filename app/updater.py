@@ -27,7 +27,9 @@ from packaging.version import InvalidVersion, Version
 
 log = logging.getLogger("uvicorn.error")  # shows up in the server log
 
-PACKAGES = ("yt-dlp", "instaloader", "bgutil-ytdlp-pot-provider")
+_SKIP = {p.strip() for p in os.environ.get("AUTO_UPDATE_SKIP", "").split(",") if p.strip()}
+# AUTO_UPDATE_SKIP: packages to leave alone (the Docker image pins the PO token plugin to its bundled server)
+PACKAGES = tuple(p for p in ("yt-dlp", "instaloader", "bgutil-ytdlp-pot-provider") if p not in _SKIP)
 # extras to keep installed alongside a package (yt-dlp[default] pulls in yt-dlp-ejs for YouTube)
 INSTALL_SPEC = {"yt-dlp": "yt-dlp[default]"}
 ENABLED = os.environ.get("AUTO_UPDATE", "1") != "0"

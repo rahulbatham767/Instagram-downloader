@@ -1,0 +1,51 @@
+# Tests the app, then deploys it to a Hugging Face Space on every push to the default branch.
+#
+# One-time setup (GitHub repo -> Settings -> Secrets and variables -> Actions):
+#   Secret  HF_TOKEN     Hugging Face token with write access (https://huggingface.co/settings/tokens)
+#   Optional secrets: COOKIES_TXT, YT_COOKIES_TXT, YT_PROXY  (copied into the Space as secrets)
+#   Optional variable: HF_SPACE  (Space name, default "instasave")
+name: Deploy to Hugging Face
+
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-huggingface
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: pip install -r requirements.txt pytest
+      - run: python -m pytest -q
+
+  deploy:
+    needs: test
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "huggingface_hub>=0.25"
+      - name: Deploy
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE: ${{ vars.HF_SPACE }}
+          COOKIES_TXT: ${{ secrets.COOKIES_TXT }}
+          YT_COOKIES_TXT: ${{ secrets.YT_COOKIES_TXT }}
+          YT_PROXY: ${{ secrets.YT_PROXY }}
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "::error::Add a HF_TOKEN secret: repo Settings -> Secrets and variables -> Actions"
+            exit 1
+          fi
+          python scripts/deploy_huggingface.py

@@ -34,8 +34,40 @@ Tip: `http://localhost:8000/?url=<instagram link>` fetches the link right away.
 With Docker:
 
 ```bash
-docker compose up -d --build   # app + YouTube PO token server; put cookies in ./data/
+docker compose up -d --build   # http://localhost:8000; put cookies in ./data/
 ```
+
+The image bundles the YouTube PO token server (bgutil), so nothing else needs to run.
+
+### Deploy to Hugging Face Spaces (free hosting)
+
+The repo deploys itself to a [Hugging Face Space](https://huggingface.co/docs/hub/spaces-sdks-docker) with
+GitHub Actions on every push to the default branch. One-time setup:
+
+1. Create a free account at https://huggingface.co and a token with **Write** access at
+   https://huggingface.co/settings/tokens.
+2. In this GitHub repo go to **Settings → Secrets and variables → Actions → New repository secret** and add
+   `HF_TOKEN` with that token.
+3. Optional:
+   - secret `COOKIES_TXT`: the contents of your cookies.txt (Instagram and/or YouTube);
+   - secret `YT_PROXY`: a residential proxy;
+   - variable `HF_SPACE`: the Space name (default `instasave`).
+4. Push a commit, or open **Actions → Deploy to Hugging Face → Run workflow**.
+
+The workflow runs the tests, creates the Space if needed, copies the optional secrets into it, and uploads the app.
+Hugging Face then builds the Docker image (about 5 minutes). The app is at `https://<your-hf-username>-instasave.hf.space`.
+
+You can also deploy from your computer: `pip install huggingface_hub && HF_TOKEN=hf_... python scripts/deploy_huggingface.py`.
+
+Things to know about free Spaces:
+- **Public by default:** anyone with the link can use the app, and therefore your cookies and proxy. Set
+  `HF_PRIVATE=1` for the first deploy if only you should use it (but then the page needs a Hugging Face login).
+- **Sleeps** after 48 hours without visitors and wakes on the next visit (about 1 minute). Files on disk reset on every restart,
+  so the auto-updater re-installs updates shortly after each start.
+- **Cloud IPs**: expect YouTube bot checks and Instagram login prompts more often than at home. The bundled
+  PO token server helps; cookies (as a Space secret) help more.
+- Hugging Face can restrict Spaces that break its [content policy](https://huggingface.co/content-guidelines)
+  or other sites' terms. Keep it for personal use.
 
 ### Command line
 
@@ -78,15 +110,15 @@ YouTube shows this to traffic it thinks is automated, and **cloud/datacenter IPs
 more often than home connections.** No single trick fixes it every time, so the app layers several defenses.
 They're listed below from most to least important.
 
-**1. PO token provider (set up automatically with Docker).**
+**1. PO token provider (built into the Docker image).**
 The [yt-dlp PO Token Guide](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide) recommends a PO-token
 provider plugin, and this app uses [bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider)
 (maintained by a yt-dlp maintainer). The plugin is in `requirements.txt` and kept updated by the auto-updater. It needs
 its small token server running:
 
 ```bash
-docker compose up -d --build        # app + token server, nothing else to do
-# or, without compose, run just the token server next to `python -m app`:
+docker compose up -d --build        # the image already runs the token server
+# without Docker, run just the token server next to `python -m app`:
 docker run -d --name bgutil-provider --init --restart unless-stopped \
   -p 127.0.0.1:4416:4416 brainicism/bgutil-ytdlp-pot-provider
 ```

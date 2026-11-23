@@ -1,27 +1,13 @@
-# Runs the downloader together with a PO token provider, which helps avoid
-# YouTube's "Sign in to confirm you're not a bot" check.
-#   docker compose up -d --build      then open http://localhost:8000
+# docker compose up -d --build      then open http://localhost:8000
+# The image includes the YouTube PO token server, so this is the only service.
 services:
   app:
     build: .
     ports:
-      - "8000:8000"
+      - "8000:7860"
     environment:
-      YT_POT_PROVIDER_URL: http://pot-provider:4416
-      IG_COOKIES_FILE: /app/data/cookies.txt
-      # YT_COOKIES_FILE: /app/data/youtube_cookies.txt
       # YT_PROXY: socks5://user:pass@residential-proxy:1080
+      IG_COOKIES_FILE: /home/user/app/data/cookies.txt
     volumes:
-      - ./data:/app/data   # put cookies.txt here
-    depends_on:
-      - pot-provider
-    restart: unless-stopped
-
-  # https://github.com/Brainicism/bgutil-ytdlp-pot-provider
-  # Only reachable from the app container: the server has no authentication,
-  # so its port is deliberately NOT published to the host.
-  pot-provider:
-    image: brainicism/bgutil-ytdlp-pot-provider:latest
-    init: true
-    pull_policy: always   # stay in step with the auto-updated yt-dlp plugin
+      - ./data:/home/user/app/data   # put cookies.txt here
     restart: unless-stopped
