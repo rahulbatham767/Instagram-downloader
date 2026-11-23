@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 import os
 import re
 import secrets
@@ -20,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
-from . import extractor
+from . import extractor, updater
 from .extractor import ExtractionError, MediaItem, MediaResult
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -31,7 +32,39 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/130.0 Safari/537.36"
 )
 
-app = FastAPI(title="Instagram Downloader")
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    updater.start()
+    yield
+
+
+app = FastAPI(title="Instagram Downloader", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def track_requests(request, call_next):
+    if not request.url.path.startswith("/api/"):
+        return await call_next(request)
+    updater.request_started()
+    try:
+        response = await call_next(request)
+    except BaseException:
+        updater.request_finished()
+        raise
+    # streamed bodies are still being sent after call_next returns; finish when they're done
+    inner = response.background
+
+    async def done():
+        try:
+            if inner:
+                await inner()
+        finally:
+            updater.request_finished()
+
+    response.background = BackgroundTask(done)
+    return response
 _cache: dict[str, tuple[float, MediaResult]] = {}
 
 
@@ -73,7 +106,11 @@ def _filename(result: MediaResult, item: MediaItem, ext: str) -> str:
 
 @app.get("/api/status")
 def status():
-    return {"logged_in": extractor.has_session(), "ffmpeg": shutil.which("ffmpeg") is not None}
+    return {
+        "logged_in": extractor.has_session(),
+        "ffmpeg": shutil.which("ffmpeg") is not None,
+        "updater": updater.status(),
+    }
 
 
 @app.post("/api/resolve")
@@ -81,6 +118,11 @@ async def resolve(req: ResolveRequest):
     try:
         result = await run_in_threadpool(extractor.resolve, req.url)
     except ExtractionError as exc:
+        try:
+            extractor.parse_link(req.url)
+            updater.notify_failure()  # valid link but failed: maybe the extractor is outdated
+        except ExtractionError:
+            pass  # the link itself was invalid
         raise HTTPException(422, str(exc)) from exc
     token = _put(result)
     data = result.to_dict()

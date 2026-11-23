@@ -1,0 +1,11 @@
+# Opens a pull request when a new yt-dlp / instaloader / base image version is released.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: daily
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly

@@ -18,7 +18,7 @@ Requirements: Python 3.10+, and `ffmpeg` on your PATH for MP3 audio.
 
 ```bash
 pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+python -m app --port 8000
 ```
 
 Open http://localhost:8000, paste a link, and click **Download**.
@@ -38,6 +38,31 @@ python -m app.cli https://www.instagram.com/reel/XXXX/           # save the vide
 python -m app.cli https://www.instagram.com/reel/XXXX/ --audio   # save as MP3
 python -m app.cli https://www.instagram.com/p/XXXX/ -o my_folder # every carousel item
 ```
+
+## Automatic updates
+
+Instagram changes its site often, and when it does, downloads break until yt-dlp / instaloader
+release a fix (usually within days). The server keeps those two libraries current by itself:
+
+- It checks PyPI **at startup and every 6 hours**, and also **soon after a download fails** (at most once an hour).
+- If a newer version exists it runs `pip install`, waits for in-progress downloads to finish (up to 5 min),
+  and **restarts itself** so the new code is loaded.
+- `GET /api/status` shows the installed versions and the result of the last check.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `AUTO_UPDATE` | `1` | set to `0` to turn the updater off |
+| `AUTO_UPDATE_INTERVAL_HOURS` | `6` | how often to check |
+| `AUTO_UPDATE_RESTART` | `1` | set to `0` to install updates but apply them only on the next manual restart |
+
+Notes:
+- Start the server with `python -m app` (or `uvicorn app.main:app` with a **single** worker). Don't use
+  `--reload` or `--workers`, because the restart replaces the current process.
+- pip needs write access to the Python environment the server runs in (a virtualenv you own is ideal).
+- In Docker, updates live inside the running container and are lost when it's recreated, but the
+  updater re-applies them a few seconds after every start.
+- The repo also has a **Dependabot** config (`.github/dependabot.yml`). Once the repo is on GitHub with Dependabot
+  enabled, it opens a pull request whenever a new version of a dependency or the Docker base image is released.
 
 ## Stories and private posts (login)
 
