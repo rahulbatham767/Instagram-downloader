@@ -1,0 +1,54 @@
+"""Command line usage:  python -m app.cli <instagram-link> [--audio] [-o DIR]"""
+
+import argparse
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+import httpx
+
+from .extractor import ExtractionError, resolve
+
+UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36"
+
+
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(description="Download Instagram videos, images, stories or audio.")
+    p.add_argument("url", help="Instagram post / reel / story link")
+    p.add_argument("--audio", action="store_true", help="save the audio of videos as MP3")
+    p.add_argument("-o", "--output", default="downloads", help="output folder (default: downloads)")
+    args = p.parse_args(argv)
+
+    try:
+        result = resolve(args.url)
+    except ExtractionError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    os.makedirs(args.output, exist_ok=True)
+    base = re.sub(r"[^\w.-]+", "_", "_".join(x for x in (result.owner, result.shortcode or result.kind) if x))
+    for item in result.items:
+        suffix = f"_{item.index + 1}" if len(result.items) > 1 else ""
+        if args.audio and item.type == "video":
+            if not shutil.which("ffmpeg"):
+                print("Error: ffmpeg is required for --audio", file=sys.stderr)
+                return 1
+            path = os.path.join(args.output, f"{base}{suffix}.mp3")
+            subprocess.run(["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-user_agent", UA,
+                            "-i", item.url, "-vn", "-acodec", "libmp3lame", "-q:a", "2", path], check=True)
+        else:
+            path = os.path.join(args.output, f"{base}{suffix}.{item.ext}")
+            with httpx.stream("GET", item.url, headers={"User-Agent": UA},
+                              follow_redirects=True, timeout=60) as r:
+                r.raise_for_status()
+                with open(path, "wb") as f:
+                    for chunk in r.iter_bytes():
+                        f.write(chunk)
+        print(f"Saved {path}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
