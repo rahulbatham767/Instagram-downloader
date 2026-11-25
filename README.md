@@ -64,8 +64,8 @@ Tip: `http://localhost:8000/?url=<instagram link>` fetches the link right away.
 > "402 Payment Required" because they can host static pages only, which can't run this app. The setup below works once
 > your account has PRO.
 
-The repo deploys itself to a [Hugging Face Space](https://huggingface.co/docs/hub/spaces-sdks-docker) with
-GitHub Actions on every push to the default branch. One-time setup:
+A GitHub Action deploys the app to a [Hugging Face Space](https://huggingface.co/docs/hub/spaces-sdks-docker)
+when you start it by hand. One-time setup:
 
 1. Create a free account at https://huggingface.co and a token with **Write** access at
    https://huggingface.co/settings/tokens.
@@ -75,7 +75,7 @@ GitHub Actions on every push to the default branch. One-time setup:
    - secret `COOKIES_TXT`: the contents of your cookies.txt (Instagram and/or YouTube);
    - secret `YT_PROXY`: a residential proxy;
    - variable `HF_SPACE`: the Space name (default `instasave`).
-4. Push a commit, or open **Actions → Deploy to Hugging Face → Run workflow**.
+4. Open **Actions → Deploy to Hugging Face → Run workflow** (each push only runs the tests).
 
 The workflow runs the tests, creates the Space if needed, copies the optional secrets into it, and uploads the app.
 Hugging Face then builds the Docker image (about 5 minutes). The app is at `https://<your-hf-username>-instasave.hf.space`.
