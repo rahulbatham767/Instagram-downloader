@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
-from . import extractor, jobs, updater, youtube
+from . import extractor, jobs, tunnel, updater, youtube
 from .extractor import ExtractionError, MediaItem, MediaResult
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -39,6 +39,7 @@ USER_AGENT = (
 async def lifespan(_app):
     updater.register_busy(jobs.running_count)  # don't restart mid-download
     updater.start()
+    tunnel.start()
     yield
 
 
@@ -119,6 +120,7 @@ def _filename(result: MediaResult, item: MediaItem, ext: str) -> str:
 @app.get("/api/status")
 def status():
     return {
+        "public_url": tunnel.state["public_url"],
         "logged_in": extractor.has_session(),
         "ffmpeg": shutil.which("ffmpeg") is not None,
         "js_runtime": shutil.which("deno") is not None,  # needed by yt-dlp for YouTube

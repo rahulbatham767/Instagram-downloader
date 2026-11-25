@@ -5,6 +5,13 @@ function show(el, on) { el.hidden = !on; }
 function setError(msg) { $("error").textContent = msg || ""; show($("error"), !!msg); }
 
 fetch("/api/status").then((r) => r.json()).then((s) => {
+  // Show the Cloudflare link when the app is opened on the computer that runs it
+  if (s.public_url && ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)) {
+    $("share-link").href = $("share-link").textContent = s.public_url;
+    $("share-copy").onclick = () => navigator.clipboard.writeText(s.public_url)
+      .then(() => { $("share-copy").textContent = "Copied!"; });
+    show($("share"), true);
+  }
   const notes = [];
   if (!s.logged_in) notes.push("Instagram stories and private posts need login cookies — see README to enable them.");
   if (!s.ffmpeg) notes.push("ffmpeg is not installed, so MP3 audio and YouTube downloads are disabled.");

@@ -18,7 +18,34 @@ YouTube only offers VP9/AV1, which modern players handle fine.
 It's a FastAPI backend with a single-page web UI. It uses
 [instaloader](https://instaloader.github.io/) first and falls back to [yt-dlp](https://github.com/yt-dlp/yt-dlp).
 
-## Run it
+## Run it on your computer with a public link (one command)
+
+You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows / Mac) or Docker Engine (Linux),
+running. Then, in this folder:
+
+```bash
+docker compose up
+```
+
+That's all. The first run builds the image (about 5 minutes); later runs start in seconds. It starts:
+
+- **the app** at http://localhost:8000 (this computer only);
+- **a free Cloudflare tunnel** that gives it a public `https://<random-words>.trycloudflare.com` link, so your phone or
+  friends can use it from anywhere. No Cloudflare account is needed. The link is printed in the terminal in a
+  `PUBLIC LINK` box, and shown at the top of http://localhost:8000 with a **Copy** button.
+
+Good to know:
+- **The link works only while this computer is on** and Docker is running.
+- **The link changes** each time the tunnel restarts (for example after a reboot). Open http://localhost:8000 to see the current one.
+  A permanent link needs your own domain on Cloudflare (a "named tunnel"), which can be added later.
+- **Run it in the background** with `docker compose up -d` so you can close the terminal. With Docker Desktop's
+  *"Start Docker Desktop when you sign in"* setting on, the app and tunnel also come back by themselves after a reboot.
+- **Anyone with the link can use it.** To limit it to you, create a file named `.env` next to `docker-compose.yml`
+  with `ALLOWED_EMAILS=you@example.com` (comma-separate several). Cloudflare then asks visitors to confirm their email.
+- **Cookies** (optional, for Instagram stories and YouTube bot checks): put `cookies.txt` in the `data` folder.
+- Downloads use **your home internet connection**, so YouTube bot checks and Instagram login prompts are much rarer than on cloud servers.
+
+## Run without Docker (for development)
 
 Requirements: Python 3.10+, and `ffmpeg` on your PATH (for MP3 and YouTube).
 `requirements.txt` also installs **Deno** and **yt-dlp-ejs**, which yt-dlp needs to read YouTube.
@@ -31,15 +58,7 @@ python -m app --port 8000
 Open http://localhost:8000, paste a link, and click **Download**.
 Tip: `http://localhost:8000/?url=<instagram link>` fetches the link right away.
 
-With Docker:
-
-```bash
-docker compose up -d --build   # http://localhost:8000; put cookies in ./data/
-```
-
-The image bundles the YouTube PO token server (bgutil), so nothing else needs to run.
-
-### Deploy to Hugging Face Spaces (needs Hugging Face PRO)
+## Deploy to Hugging Face Spaces (needs Hugging Face PRO)
 
 > **Note:** Since mid-2026, Hugging Face only allows Docker Spaces on **PRO** accounts. Free accounts get
 > "402 Payment Required" because they can host static pages only, which can't run this app. The setup below works once
@@ -73,7 +92,7 @@ Things to know about free Spaces:
 - Hugging Face can restrict Spaces that break its [content policy](https://huggingface.co/content-guidelines)
   or other sites' terms. Keep it for personal use.
 
-### Command line
+## Command line
 
 ```bash
 python -m app.cli https://www.instagram.com/reel/XXXX/           # save the video

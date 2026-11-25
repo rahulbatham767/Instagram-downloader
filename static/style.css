@@ -73,6 +73,10 @@ a.btn { flex: 1; text-align: center; text-decoration: none; font-weight: 600; fo
 .bar.indeterminate > span { width: 30%; animation: slide 1.2s ease-in-out infinite; }
 @keyframes slide { from { margin-left: -30%; } to { margin-left: 100%; } }
 @media (max-width: 640px) { .yt { grid-template-columns: 1fr; } }
+.share { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px; margin-bottom: 12px;
+         border: 1px solid var(--border); border-radius: 10px; background: var(--card); font-size: .92rem; }
+.share a { color: var(--accent2); font-weight: 600; word-break: break-all; flex: 1; min-width: 0; }
+.share button { padding: 6px 14px; }
 footer { text-align: center; color: var(--muted); font-size: .8rem; margin-top: 40px; }
 
 @media (max-width: 520px) {
