@@ -84,6 +84,19 @@ def watch_url(raw: str) -> str:
     return f"https://www.youtube.com/watch?v={video_id(raw)}"
 
 
+def js_runtimes() -> dict | None:
+    """yt-dlp enables only Deno by default. Where Deno can't run (Termux on Android),
+    enable another installed runtime so YouTube still works."""
+    import shutil
+
+    if shutil.which("deno"):
+        return None  # yt-dlp's default
+    for name, exe in (("node", "node"), ("bun", "bun"), ("quickjs", "qjs")):
+        if shutil.which(exe):
+            return {name: {}}
+    return None
+
+
 def _base_opts(clients: list[str] | None = None) -> dict:
     opts = {
         "quiet": True, "no_warnings": True, "noplaylist": True, "noprogress": True,
@@ -94,6 +107,8 @@ def _base_opts(clients: list[str] | None = None) -> dict:
         # a short pause between API requests helps stay under YouTube's rate limits
         "sleep_interval_requests": 1,
     }
+    if runtimes := js_runtimes():
+        opts["js_runtimes"] = runtimes
     if os.path.isfile(YT_COOKIES_FILE):
         opts["cookiefile"] = YT_COOKIES_FILE
     if PROXY:

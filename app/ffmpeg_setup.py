@@ -21,10 +21,17 @@ log = logging.getLogger("uvicorn.error")
 BIN_DIR = Path(os.environ.get("INSTASAVE_BIN_DIR", Path.home() / ".cache" / "instasave" / "bin"))
 
 
+def is_termux() -> bool:
+    return "TERMUX_VERSION" in os.environ or "com.termux" in os.environ.get("PREFIX", "")
+
+
 def ensure_ffmpeg() -> str | None:
     """Return the path of a usable ffmpeg, installing the bundled one if needed."""
     if found := shutil.which("ffmpeg"):
         return found
+    if is_termux():  # the pip build is for regular Linux and won't run on Android
+        log.warning("ffmpeg not found. In Termux run: pkg install ffmpeg")
+        return None
     try:
         import imageio_ffmpeg
 

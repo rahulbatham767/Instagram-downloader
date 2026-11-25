@@ -127,7 +127,7 @@ def status():
         "public_url": tunnel.state["public_url"],
         "logged_in": extractor.has_session(),
         "ffmpeg": shutil.which("ffmpeg") is not None,
-        "js_runtime": shutil.which("deno") is not None,  # needed by yt-dlp for YouTube
+        "js_runtime": any(shutil.which(x) for x in ("deno", "node", "bun", "qjs")),  # yt-dlp needs one for YouTube
         "youtube": {**youtube.bot_protection_status(), "pot_server_setup": potserver.state},
         "updater": updater.status(),
     }

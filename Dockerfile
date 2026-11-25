@@ -31,7 +31,7 @@ ENV HOME=/home/user \
 RUN python -m venv /home/user/venv
 WORKDIR /home/user/app
 
-COPY --chown=user requirements.txt .
+COPY --chown=user requirements.txt requirements-core.txt ./
 # plugin version must match the bundled token server, so it's pinned here
 RUN pip install --no-cache-dir -r requirements.txt "bgutil-ytdlp-pot-provider==${BGUTIL_VERSION}"
 

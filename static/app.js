@@ -14,8 +14,8 @@ function checkStatus() {
       show($("share"), true);
     }
     const notes = [];
-    if (!s.ffmpeg) notes.push("ffmpeg is missing, so MP3 audio and YouTube downloads won't work — run pip install -r requirements.txt again.");
-    if (!s.js_runtime) notes.push("Deno is missing, so YouTube downloads may fail — run pip install -r requirements.txt again.");
+    if (!s.ffmpeg) notes.push("ffmpeg is missing, so MP3 audio and YouTube downloads won't work — run pip install -r requirements.txt again (Termux: pkg install ffmpeg).");
+    if (!s.js_runtime) notes.push("No JavaScript runtime found, so YouTube downloads may fail — run pip install -r requirements.txt again (Termux: pkg install nodejs-lts).");
     const yt = s.youtube || {};
     const setup = (yt.pot_server_setup || {}).status;
     const settingUp = ["not started", "downloading", "installing", "restarting"].includes(setup);

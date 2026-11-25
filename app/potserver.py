@@ -6,7 +6,8 @@ server running. Docker images start it themselves; for a plain
 
   1. downloads the server source matching the installed plugin version
      (once, ~/.cache/instasave/bgutil/<version>/),
-  2. installs its dependencies with Deno (from requirements.txt),
+  2. installs its dependencies with Deno (from requirements.txt), or with
+     Node.js/npm where Deno can't run (Termux on Android),
   3. starts it on 127.0.0.1:4416 in the background and restarts it if it exits.
 
 It runs in a background thread, so the app starts immediately; YouTube
@@ -97,16 +98,26 @@ def _download_source(ver: str, dest: Path) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def _deno() -> str:
-    deno = shutil.which("deno")
-    if not deno:
-        raise RuntimeError("Deno not found; run pip install -r requirements.txt")
-    return deno
+def runtime() -> str:
+    """Deno where available (desktop, via pip); Node.js otherwise (e.g. Termux on Android)."""
+    if shutil.which("deno"):
+        return "deno"
+    if shutil.which("node") and shutil.which("npm"):
+        return "node"
+    raise RuntimeError("needs Deno (pip install -r requirements.txt) or Node.js (Termux: pkg install nodejs-lts)")
 
 
-def ensure_installed(ver: str) -> Path:
+def _sub(cmd: list[str], cwd: Path, timeout: int) -> None:
+    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout,
+                          env={**os.environ, "DENO_NO_UPDATE_CHECK": "1"})
+    if proc.returncode != 0:
+        lines = (proc.stderr or proc.stdout or "").strip().splitlines() or ["?"]
+        raise RuntimeError(f"{Path(cmd[0]).name} {cmd[1]} failed: {lines[-1]}")
+
+
+def ensure_installed(ver: str, rt: str) -> Path:
     """Return the server/ folder for `ver`, downloading and installing it if needed."""
-    home = CACHE / ver
+    home = CACHE / f"{ver}-{rt}"
     server = home / "server"
     if (home / ".ready").exists():
         return server
@@ -115,13 +126,25 @@ def ensure_installed(ver: str) -> Path:
     _set("downloading")
     _download_source(ver, home)
     _set("installing")
-    proc = subprocess.run([_deno(), "install", "--allow-scripts=npm:canvas", "--frozen"],
-                          cwd=server, capture_output=True, text=True, timeout=900,
-                          env={**os.environ, "DENO_NO_UPDATE_CHECK": "1"})
-    if proc.returncode != 0:
-        raise RuntimeError("deno install failed: " + (proc.stderr.strip().splitlines() or ["?"])[-1])
+    if rt == "deno":
+        _sub([shutil.which("deno"), "install", "--allow-scripts=npm:canvas", "--frozen"], server, 900)
+    else:
+        # --ignore-scripts skips building the optional `canvas` native addon, which
+        # can't be built on Android; the server works without it.
+        npm = shutil.which("npm")
+        _sub([npm, "ci", "--ignore-scripts", "--no-audit", "--no-fund"], server, 1800)
+        _sub([npm, "exec", "--offline", "--", "tsc"], server, 900)
     (home / ".ready").touch()
     return server
+
+
+def server_command(server: Path, rt: str, port: int) -> list[str]:
+    args = ["--host", "127.0.0.1", "--port", str(port)]
+    if rt == "deno":
+        nm = str(server / "node_modules")
+        return [shutil.which("deno"), "run", "--allow-env", "--allow-net", f"--allow-ffi={nm}",
+                f"--allow-read={nm}", "src/main.ts", *args]
+    return [shutil.which("node"), "build/main.js", *args]
 
 
 def _pidfile() -> Path:
@@ -143,11 +166,9 @@ def _terminate(proc: subprocess.Popen) -> None:
         proc.terminate()
 
 
-def _run(server: Path, port: int) -> None:
+def _run(server: Path, rt: str, port: int) -> None:
     """Start the server and keep it running."""
-    nm = str(server / "node_modules")
-    cmd = [_deno(), "run", "--allow-env", "--allow-net", f"--allow-ffi={nm}", f"--allow-read={nm}",
-           "src/main.ts", "--host", "127.0.0.1", "--port", str(port)]
+    cmd = server_command(server, rt, port)
     logfile = CACHE / "server.log"
     failures = 0
     while failures < 5:
@@ -184,7 +205,8 @@ def _main() -> None:
             return
         if status["reachable"]:
             _stop_previous()  # an older version we started before the plugin was updated
-        _run(ensure_installed(ver), port)
+        rt = runtime()
+        _run(ensure_installed(ver, rt), rt, port)
     except Exception as exc:
         _set("failed", str(exc))
 

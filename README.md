@@ -45,6 +45,32 @@ Good to know:
 - **Cookies** (optional, for Instagram stories and YouTube bot checks): put `cookies.txt` in the `data` folder.
 - Downloads use **your home internet connection**, so YouTube bot checks and Instagram login prompts are much rarer than on cloud servers.
 
+## Run it on Android (Termux)
+
+Install [Termux](https://f-droid.org/packages/com.termux/) from F-Droid (the Play Store version is outdated), then:
+
+```bash
+pkg install -y git
+git clone -b ccr-65ae6f81-sx87z1 https://github.com/rahulbatham767/Instagram-downloader.git
+cd Instagram-downloader
+bash termux-start.sh
+```
+
+From then on, `bash termux-start.sh` is the only command: open http://localhost:8000 in your phone's browser.
+
+- **The first run takes 10–20 minutes.** It installs Termux's own **ffmpeg** and **Node.js** (the pip builds of ffmpeg and
+  Deno only work on regular Linux, not Android), plus clang and Rust, because some Python packages
+  (like pydantic-core) have to be built from source on Android. Later runs start in seconds, and setup re-runs only when
+  `requirements-core.txt` changes.
+- **YouTube** uses Node.js instead of Deno, and the PO token server is installed and run with Node.js too. It runs
+  without the optional `canvas` add-on, which can't be built on Android.
+- **Public link:** `bash termux-start.sh --public` also starts a Cloudflare quick tunnel (`cloudflared` from Termux's
+  packages) and prints the link. The same notes as the Docker setup apply: the link changes on every start, and anyone with it can use the app.
+- **Keep it running with the screen off:** the script calls `termux-wake-lock`. Also turn off battery optimisation for Termux
+  in Android settings, or Android may stop it in the background.
+- Don't run `pip install -r requirements.txt` on Termux: it includes desktop-only packages (Deno, the pip ffmpeg) that can't install
+  on Android. The script uses `requirements-core.txt`.
+
 ## Run without Docker (for development)
 
 Requirements: Python 3.10+. Everything else comes from `requirements.txt`:

@@ -25,7 +25,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-FILES = ["Dockerfile", "start.sh", "requirements.txt", ".dockerignore"]
+FILES = ["Dockerfile", "start.sh", "requirements.txt", "requirements-core.txt", ".dockerignore"]
 DIRS = ["app", "static"]
 SECRETS = ["COOKIES_TXT", "YT_COOKIES_TXT", "YT_PROXY"]
 
