@@ -3,7 +3,7 @@
 ARG BGUTIL_VERSION=2.0.2
 
 # ---- build the bgutil PO token server's dependencies -------------------------
-FROM node:22-bookworm-slim AS pot
+FROM node:26-bookworm-slim AS pot
 ARG BGUTIL_VERSION
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
