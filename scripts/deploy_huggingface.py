@@ -71,8 +71,16 @@ def main() -> int:
     space = os.environ.get("HF_SPACE", "").strip() or "instasave"
     repo_id = space if "/" in space else f"{api.whoami()['name']}/{space}"
 
-    api.create_repo(repo_id, repo_type="space", space_sdk="docker", exist_ok=True,
-                    private=os.environ.get("HF_PRIVATE") == "1")
+    try:
+        api.create_repo(repo_id, repo_type="space", space_sdk="docker", exist_ok=True,
+                        private=os.environ.get("HF_PRIVATE") == "1")
+    except Exception as exc:
+        if getattr(getattr(exc, "response", None), "status_code", None) == 402:
+            print("Hugging Face refused: Docker Spaces need a PRO subscription (https://huggingface.co/pro).\n"
+                  "Free accounts can only host static Spaces, which can't run this app's server.\n"
+                  "See README -> Hosting for free alternatives.", file=sys.stderr)
+            return 2
+        raise
     print(f"Space: https://huggingface.co/spaces/{repo_id}")
 
     for key in SECRETS:

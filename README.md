@@ -39,7 +39,11 @@ docker compose up -d --build   # http://localhost:8000; put cookies in ./data/
 
 The image bundles the YouTube PO token server (bgutil), so nothing else needs to run.
 
-### Deploy to Hugging Face Spaces (free hosting)
+### Deploy to Hugging Face Spaces (needs Hugging Face PRO)
+
+> **Note:** Since mid-2026, Hugging Face only allows Docker Spaces on **PRO** accounts. Free accounts get
+> "402 Payment Required" because they can host static pages only, which can't run this app. The setup below works once
+> your account has PRO.
 
 The repo deploys itself to a [Hugging Face Space](https://huggingface.co/docs/hub/spaces-sdks-docker) with
 GitHub Actions on every push to the default branch. One-time setup:

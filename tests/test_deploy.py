@@ -55,3 +55,23 @@ def test_main_requires_token(monkeypatch):
     monkeypatch.setitem(sys.modules, "huggingface_hub", types.SimpleNamespace(HfApi=None))
     monkeypatch.setenv("HF_TOKEN", "")
     assert d.main() == 1
+
+
+def test_main_explains_pro_requirement(monkeypatch, capsys):
+    class PaymentRequired(Exception):
+        response = types.SimpleNamespace(status_code=402)
+
+    class FakeApi:
+        def __init__(self, token):
+            pass
+
+        def whoami(self):
+            return {"name": "someone"}
+
+        def create_repo(self, repo_id, **kw):
+            raise PaymentRequired("402 Payment Required")
+
+    monkeypatch.setitem(sys.modules, "huggingface_hub", types.SimpleNamespace(HfApi=FakeApi))
+    monkeypatch.setenv("HF_TOKEN", "hf_test")
+    assert d.main() == 2
+    assert "PRO subscription" in capsys.readouterr().err
