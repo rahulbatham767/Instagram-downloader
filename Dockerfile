@@ -13,7 +13,7 @@ WORKDIR /pot/server
 RUN npm ci --omit=dev --no-audit --no-fund
 
 # ---- app image ---------------------------------------------------------------
-FROM python:3.12-slim-bookworm
+FROM python:3.15-slim-bookworm
 ARG BGUTIL_VERSION
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
