@@ -4,23 +4,34 @@ const form = $("form"), input = $("url"), go = $("go");
 function show(el, on) { el.hidden = !on; }
 function setError(msg) { $("error").textContent = msg || ""; show($("error"), !!msg); }
 
-fetch("/api/status").then((r) => r.json()).then((s) => {
-  // Show the Cloudflare link when the app is opened on the computer that runs it
-  if (s.public_url && ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)) {
-    $("share-link").href = $("share-link").textContent = s.public_url;
-    $("share-copy").onclick = () => navigator.clipboard.writeText(s.public_url)
-      .then(() => { $("share-copy").textContent = "Copied!"; });
-    show($("share"), true);
-  }
-  const notes = [];
-  if (!s.logged_in) notes.push("Instagram stories and private posts need login cookies — see README to enable them.");
-  if (!s.ffmpeg) notes.push("ffmpeg is not installed, so MP3 audio and YouTube downloads are disabled.");
-  if (!s.js_runtime) notes.push("Deno is not installed, so YouTube downloads may fail — run pip install -r requirements.txt.");
-  const yt = s.youtube || {};
-  if (yt.pot_provider && !yt.pot_provider.reachable && !yt.cookies)
-    notes.push("YouTube bot protection isn't set up (no PO token server or cookies), so YouTube may ask to \"confirm you're not a bot\" — see README.");
-  if (notes.length) { $("notice").textContent = notes.join(" "); show($("notice"), true); }
-}).catch(() => {});
+function checkStatus() {
+  fetch("/api/status").then((r) => r.json()).then((s) => {
+    // Show the Cloudflare link when the app is opened on the computer that runs it
+    if (s.public_url && ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)) {
+      $("share-link").href = $("share-link").textContent = s.public_url;
+      $("share-copy").onclick = () => navigator.clipboard.writeText(s.public_url)
+        .then(() => { $("share-copy").textContent = "Copied!"; });
+      show($("share"), true);
+    }
+    const notes = [];
+    if (!s.ffmpeg) notes.push("ffmpeg is missing, so MP3 audio and YouTube downloads won't work — run pip install -r requirements.txt again.");
+    if (!s.js_runtime) notes.push("Deno is missing, so YouTube downloads may fail — run pip install -r requirements.txt again.");
+    const yt = s.youtube || {};
+    const setup = (yt.pot_server_setup || {}).status;
+    const settingUp = ["not started", "downloading", "installing", "restarting"].includes(setup);
+    if (yt.pot_provider && !yt.pot_provider.reachable) {
+      if (settingUp) notes.push("Setting up YouTube bot protection (first start only, about a minute)…");
+      else if (!yt.cookies) notes.push("YouTube bot protection couldn't start" +
+        (yt.pot_server_setup && yt.pot_server_setup.error ? ` (${yt.pot_server_setup.error})` : "") +
+        ", so YouTube may ask to \"confirm you're not a bot\" — see README.");
+    }
+    if (!s.logged_in) notes.push("Tip: to download Instagram stories or private posts, add login cookies (see README).");
+    $("notice").textContent = notes.join(" ");
+    show($("notice"), notes.length > 0);
+    if (settingUp && yt.pot_provider && !yt.pot_provider.reachable) setTimeout(checkStatus, 5000);
+  }).catch(() => {});
+}
+checkStatus();
 
 $("paste").addEventListener("click", async () => {
   try { input.value = (await navigator.clipboard.readText()).trim(); input.focus(); }

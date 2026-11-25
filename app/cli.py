@@ -11,6 +11,7 @@ import sys
 import httpx
 
 from . import youtube
+from .ffmpeg_setup import ensure_ffmpeg
 from .extractor import ExtractionError, resolve
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0 Safari/537.36"
@@ -23,6 +24,7 @@ def main(argv=None) -> int:
     p.add_argument("--quality", type=int, help="YouTube: max video height, e.g. 1080 or 720 (default: best)")
     p.add_argument("-o", "--output", default="downloads", help="output folder (default: downloads)")
     args = p.parse_args(argv)
+    ensure_ffmpeg()
 
     try:
         result = resolve(args.url)

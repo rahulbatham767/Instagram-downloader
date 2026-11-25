@@ -48,6 +48,7 @@ COPY --chown=user --chmod=755 start.sh .
 ENV PORT=7860 \
     YT_POT_PROVIDER_URL=http://127.0.0.1:4416 \
     IG_COOKIES_FILE=/home/user/app/data/cookies.txt \
-    AUTO_UPDATE_SKIP=bgutil-ytdlp-pot-provider
+    AUTO_UPDATE_SKIP=bgutil-ytdlp-pot-provider \
+    AUTO_POT_SERVER=0
 EXPOSE 7860
 CMD ["./start.sh"]

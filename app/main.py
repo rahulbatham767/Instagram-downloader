@@ -22,8 +22,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
-from . import extractor, jobs, tunnel, updater, youtube
+from . import extractor, jobs, potserver, tunnel, updater, youtube
 from .extractor import ExtractionError, MediaItem, MediaResult
+from .ffmpeg_setup import ensure_ffmpeg
+
+ensure_ffmpeg()  # use the pip-bundled ffmpeg if the system has none
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 CACHE_TTL = 30 * 60  # resolved CDN links expire, keep them for 30 minutes
@@ -40,6 +43,7 @@ async def lifespan(_app):
     updater.register_busy(jobs.running_count)  # don't restart mid-download
     updater.start()
     tunnel.start()
+    potserver.start()
     yield
 
 
@@ -124,7 +128,7 @@ def status():
         "logged_in": extractor.has_session(),
         "ffmpeg": shutil.which("ffmpeg") is not None,
         "js_runtime": shutil.which("deno") is not None,  # needed by yt-dlp for YouTube
-        "youtube": youtube.bot_protection_status(),
+        "youtube": {**youtube.bot_protection_status(), "pot_server_setup": potserver.state},
         "updater": updater.status(),
     }
 

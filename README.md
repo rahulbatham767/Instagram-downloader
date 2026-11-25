@@ -47,8 +47,13 @@ Good to know:
 
 ## Run without Docker (for development)
 
-Requirements: Python 3.10+, and `ffmpeg` on your PATH (for MP3 and YouTube).
-`requirements.txt` also installs **Deno** and **yt-dlp-ejs**, which yt-dlp needs to read YouTube.
+Requirements: Python 3.10+. Everything else comes from `requirements.txt`:
+
+- **ffmpeg** (for MP3 and YouTube): a system-wide ffmpeg is used if you have one; otherwise the copy
+  bundled in the `imageio-ffmpeg` package is set up automatically.
+- **Deno** and **yt-dlp-ejs**, which yt-dlp needs to read YouTube.
+- **The YouTube PO token server** is downloaded and started by the app on its first start (about a minute, once).
+  It's kept in `~/.cache/instasave/` and runs on `127.0.0.1:4416` while the app runs. Set `AUTO_POT_SERVER=0` to turn this off.
 
 ```bash
 pip install -r requirements.txt
@@ -133,7 +138,7 @@ YouTube shows this to traffic it thinks is automated, and **cloud/datacenter IPs
 more often than home connections.** No single trick fixes it every time, so the app layers several defenses.
 They're listed below from most to least important.
 
-**1. PO token provider (built into the Docker image).**
+**1. PO token provider (set up automatically, with or without Docker).**
 The [yt-dlp PO Token Guide](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide) recommends a PO-token
 provider plugin, and this app uses [bgutil-ytdlp-pot-provider](https://github.com/Brainicism/bgutil-ytdlp-pot-provider)
 (maintained by a yt-dlp maintainer). The plugin is in `requirements.txt` and kept updated by the auto-updater. It needs
